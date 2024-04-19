@@ -163,12 +163,19 @@ void serve_static(int fd, char *filename, int filesize) {
     printf("Response headers:\n");
     printf("%s", buf);
 
-    /* 응답 바디 전송 */
-    srcfd = Open(filename, O_RDONLY, 0);                        // 파일 열기
-    srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0); // 파일을 가상메모리에 매핑
-    Close(srcfd);                                               // 파일 디스크립터 닫기
-    Rio_writen(fd, srcp, filesize);                             // 파일 내용을 클라이언트에게 전송 (응답 바디 전송)
-    Munmap(srcp, filesize);                                     // 매핑된 가상메모리 해제
+    /* 응답 바디 전송 *//*
+    srcfd = Open(filename, O_RDONLY, 0);  // filename의 이름을 갖는 파일을 읽기 권한으로 불러온다.
+    srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0); // 메모리에 파일 내용을 동적할당한다.
+    Close(srcfd);                         // 소켓을 열어놓는 것은 "치명적"인 메모리 누수 발생시킴
+    Rio_writen(fd, srcp, filesize);       // 해당 메모리에 있는 파일 내용들을 fd에 보낸다.(읽는다.)
+    Munmap(srcp, filesize);               // 할당된 메모리 공간을 해제한다.
+*/
+    //과제 11.9
+    srcp = (char *) malloc(filesize);
+    rio_readn(srcfd, srcp, filesize); //이 함수는 파일 또는 네트워크 소켓에서 지정된 바이트 수만큼 데이터를 읽어서 사용자가 제공한 버퍼(srcp)에 저장
+    Close(srcfd);
+    rio_writen(fd, srcp, filesize);//이 함수는 사용자가 제공한 버퍼에서 지정된 바이트 수만큼 데이터를 읽어 파일 또는 네트워크 소켓에 읽기작업
+    free(srcp);
 }
 
 void get_filetype(char *filename, char *filetype) {
