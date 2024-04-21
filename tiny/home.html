@@ -3,15 +3,29 @@
     <title>test</title>
     <style>
         .mp4 {
-            width: 100%;
-            max-width: 100%;
+            width: 500px;
+            max-width: 500px;
             height: auto;
         }
     </style>
+    <script>
+        function adder(e) {
+            e.preventDefault();
+            let first = document.getElementById('first').value;
+            let second = document.getElementById('second').value;
+            window.location.href = `http://localhost:8000/cgi-bin/adder?${first}&${second}`;
+        }
+    </script>
 </head>
 <body>
-<img align="middle" src="godzilla.gif">
+<img align="middle" src="godzilla.gif"/>
 Dave O'Hallaron
 <video class="mp4" autoplay muted controls align="middle" src="silicagel.mp4">silicagel</video>
+
+<form onsubmit="onsubmit(adder)">
+    <p>첫 번째 숫자: <input type="text" name="first" id="first"/></p>
+    <p>두 번째 숫자: <input type="text" name="second" id="second"/></p>
+    <input type="submit" value="add"/>
+</form>
 </body>
 </html>
