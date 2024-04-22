@@ -110,20 +110,26 @@ void doit(int clientfd) {
 // }
 
 void parse_uri(char *uri, char *hostname, char *port, char *path) {
-    char *hostname_ptr = strstr(uri, "//") != NULL ? strstr(uri, "//") + 2 : uri +
-                                                                             1; // http:// 이후 문자열 찾기 문자열 뒤의 첫 번째 문자를 가리키며, 이것이 호스트 이름의 시작
-    char *port_ptr = strstr(hostname_ptr, ":"); //포트 번호
-    char *path_ptr = strstr(hostname_ptr, "/"); //경로의 시작
-    if (path_ptr > 0) {
-        *path_ptr = '\0';
-        strcpy(path, path_ptr + 1);
-    }
-    if (port_ptr > 0) {
-        *port_ptr = '\0';
-        strcpy(port, port_ptr + 1);
+    char *hostname_ptr = strstr(uri, "//") ? strstr(uri, "//") + 2 : uri + 1;
+    char *port_ptr = strstr(hostname_ptr, ":");
+    char *path_ptr = strstr(hostname_ptr, "/");
+
+    // 경로 처리
+    if (path_ptr) {
+        *path_ptr = '\0'; // 경로 시작 부분을 NULL로 변경하여 호스트 이름과 포트 번호를 분리
+        strcpy(path, path_ptr + 1); // 경로 복사
+    } else {
+        strcpy(path, ""); // 경로가 없는 경우 빈 문자열로 설정
     }
 
-    strcpy(hostname, hostname_ptr);
+    // 포트 번호 처리
+    if (port_ptr && port_ptr < path_ptr) { // 포트 번호가 있고, 경로 시작 전에 위치하는 경우
+        *port_ptr = '\0'; // 포트 시작 부분을 NULL로 변경하여 호스트 이름을 분리
+        strcpy(port, port_ptr + 1); // 포트 번호 복사
+    } else {
+        strcpy(port, "80"); // 포트 번호가 명시되지 않은 경우 기본값으로 "80" 설정
+    }
 
-    printf("## parse_uri host: %s, port: %s, path: %s ##\n", hostname, port, path);
+    // 호스트 이름 처리
+    strcpy(hostname, hostname_ptr); // 호스트 이름 복사
 }
