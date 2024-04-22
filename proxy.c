@@ -12,16 +12,18 @@ void build_http_header(char *http_header, char *method, char *path, char *user_a
 
 int connect_endServer(char *hostname, int port, char *http_header);
 
+void *thread(void *vargp);
+
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
 
 int main(int argc, char **argv) {
-    int listenfd, connfd;
+    int listenfd, *connfd;
     char hostname[MAXLINE], port[MAXLINE];
-    socklen_t clientlen;
+    socklen_t clientlen; //주소의 길이
     struct sockaddr_storage clientaddr;
-
+    pthread_t tid; //스레드의 식별자(identifier)를 정의
     /* Check command line args */
     if (argc != 2) {
         fprintf(stderr, "usage: %s <port>\n", argv[0]);
@@ -31,16 +33,27 @@ int main(int argc, char **argv) {
     listenfd = Open_listenfd(argv[1]); // 지정된 포트에서 수신 소켓 생성
     while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA *) &clientaddr,
-                        &clientlen); // 클라이언트 Request Accept
+
+        connfd = Malloc(sizeof(int));
+        *connfd = Accept(listenfd, (SA *) &clientaddr, &clientlen); // 클라이언트 연결 요청의 수
+        printf("Original Socket Number : %d", connfd);
         Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE,
                     0); // 클라이언트 호스트 이름, 포트 번호
         printf("Accepted connection from (%s, %s)\n", hostname, port);
-        doit(connfd); // sequential handle
-        Close(connfd);
+        /*doit(connfd); // sequential handle
+        Close(connfd);*/
+        Pthread_create(&tid, NULL, thread, connfd);
     }
 }
 
+void *thread(void *vargp) {
+    int connfd = *((int *) vargp);
+    Pthread_detach(pthread_self()) //리소스 반환을 자동으로해주는 분리상태
+    Free(vargp);
+    doit(connfd);
+    Close(connfd);
+    return NULL;
+}
 
 void doit(int clientfd) {
     int serverfd;
@@ -87,7 +100,6 @@ void doit(int clientfd) {
         return;
     }
 
-    printf("%s\n", request_buf);
     Rio_writen(serverfd, request_buf, strlen(request_buf)); // 서버에 요청 전송
 
     /* 서버로부터 응답 받아 클라이언트에 전송 */
