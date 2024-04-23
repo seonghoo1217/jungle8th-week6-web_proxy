@@ -72,19 +72,21 @@ char *getCache(char *key) {
 }
 
 // 캐시 키 생성
-char *createCacheKey(int socketId, char *path) {
+char *createCacheKey(char *path) {
     // socketId를 문자열로 변환하기 위해 충분한 크기의 배열을 선언합니다.
+/*
     char strSocketId[20]; // int 최대 크기를 고려한 충분한 크기
     sprintf(strSocketId, "%d", socketId); // int를 문자열로 변환
+*/
 
     //key에 메모리 할당
-    char *key = (char *) malloc(strlen(strSocketId) + strlen(path) + 1);
+    char *key = (char *) malloc(strlen(path) + 1);
     if (!key) {
         return NULL; // 메모리 할당 실패 시 NULL 반환
     }
 
     // key를 초기화하고, socketId 문자열과 path를 합칩니다.
-    strcpy(key, strSocketId); // 첫 번째 문자열을 key에 복사
+//    strcpy(key, strSocketId); // 첫 번째 문자열을 key에 복사
     strcat(key, path); // 두 번째 문자열을 key에 이어 붙임
 
     return key;
@@ -135,12 +137,6 @@ void doit(int clientfd) {
     char hostname[MAXLINE], port[MAXLINE];
     rio_t request_rio, response_rio;
 
-    /*캐싱영역 ==============================*/
-    int socketId = clientfd;
-
-
-    /*캐싱영역 ==============================*/
-
     /* 클라이언트의 요청 읽기 */
     Rio_readinitb(&request_rio, clientfd); // 클라이언트 소켓 디스크립터를 리오 버퍼에 연결
     Rio_readlineb(&request_rio, request_buf, MAXLINE); // 클라이언트로부터 요청 라인을 읽음
@@ -155,8 +151,13 @@ void doit(int clientfd) {
     /* URI 파싱하여 호스트명, 포트, 경로 추출 */
     parse_uri(uri, hostname, port, path);
 
+    /*캐싱영역 ==============================*/
+
     printf("hostname: %s", hostname);
     printf("port: %s", port);
+
+    /*캐싱영역 ==============================*/
+
 
 //    printf("uri: %s\n", uri); // 디버깅용 URI 출력
 
