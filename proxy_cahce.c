@@ -1,4 +1,5 @@
 #include <stdio.h>
+
 #include "csapp.h"
 
 #define MAX_CACHE_SIZE 1049000
@@ -54,57 +55,49 @@ typedef struct {
     int readCnt;  // count of readers
     sem_t wmutex;  // protects accesses to cache 세마포어 타입. 1: 사용가능, 0: 사용 불가능
     sem_t rdcntmutex;  // protects accesses to readcnt
-} cache_block; // 캐쉬블럭 구조체로 선언
-
+} cache_block; // 캐쉬블럭 구조체로 선언return key;
 
 typedef struct {
     cache_block cacheobjs[CACHE_OBJS_COUNT];  // ten cache blocks
+    // int cache_num; // 캐시(10개) 넘버 부여
+    /* feedback : cache_num 사용 되는 곳 없음. 삭제해도 무방 */
 } Cache;
 
 Cache cache;
 
 
 int main(int argc, char **argv) {
-    int listenfd, connfd;
-    socklen_t clientlen;
+    int listenfd, *connfd;
     char hostname[MAXLINE], port[MAXLINE];
-    pthread_t tid;
+    socklen_t clientlen; //주소의 길이
     struct sockaddr_storage clientaddr;
+    pthread_t tid; //스레드의 식별자(identifier)를 정의
 
     cache_init();
 
+    /* Check command line args */
     if (argc != 2) {
-        // fprintf: 출력을 파일에다 씀. strerr: 파일 포인터
-        fprintf(stderr, "usage: %s <port> \n", argv[0]);
-        exit(1);  // exit(1): 에러 시 강제 종료
+        fprintf(stderr, "usage: %s <port>\n", argv[0]);
+        exit(1);
     }
-    Signal(SIGPIPE, SIG_IGN); // 특정 클라가 종료되어있다고 해서 남은 클라에 영향가지않게 그 한쪽 종료됐다는 시그널을 무시해라.
-    /* 클라이언트를 여러개 받고 서버랑 연결하는데, 만약 정상적인 커넥션과 클로즈를 한다면 소켓을 받으면서 다 닫는 것 까지가 프로세스 과정인데,
-      그건 정상적인 과정이니 문제가 안생김. but 클라이언트에서 정상적이지 않은 종료를 해서 소켓이 자기 혼자 닫히거나 사라졌을 때
-      서버에서 그 소켓에 접근하려고 할 때 그 소켓에 대해 writen하려고 할 때 response를 보낼 수 있음.
-      그러면 시그널에서 잘못됐다는 시그널을 보내는데 그 보내는 시그널은 받으면 원래는 프로세스가 전체 종료가 됨.
-      하지만 이 프로세스는 현재 다른 여러 클라이언트들과도 연결되어있는 상태기 때문에 하나 종료됐다고 해서 다 꺼버리면 안되니까
-      그런 시그널을 무시해라, 라는 함수. SIG_IGN : signal ignore */
-
-    listenfd = Open_listenfd(argv[1]);
+    Signal(SIGPIPE, SIG_IGN);
+    listenfd = Open_listenfd(argv[1]); // 지정된 포트에서 수신 소켓 생성
     while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA *) &clientaddr, &clientlen);
-
-        Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
-        printf("Accepted connection from (%s %s).\n", hostname, port);
-
-        // 첫 번째 인자 *thread: 쓰레드 식별자 / 두 번째: 쓰레드 특성 지정 (기본: NULL) / 세 번째: 쓰레드 함수 / 네 번째: 쓰레드 함수의 매개변수
-        Pthread_create(&tid, NULL, thread, (void *) connfd);
-        // doit(connfd);
-        // Close(connfd);
+        connfd = Accept(listenfd, (SA *) &clientaddr, &clientlen);// 클라이언트 연결 요청의 수
+        printf("Original Socket Number : %d", connfd);
+        Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE,
+                    0); // 클라이언트 호스트 이름, 포트 번호
+        /*doit(connfd); // sequential handle
+        Close(connfd);*/
+        Pthread_create(&tid, NULL, thread, connfd);
     }
-    return 0;
 }
 
-void *thread(void *vargsp) {
-    int connfd = (int) vargsp;
-    Pthread_detach(pthread_self());
+void *thread(void *vargp) {
+    int connfd = *((int *) vargp);
+    Pthread_detach(pthread_self()); //리소스 반환을 자동으로해주는 분리상태
+//    Free(vargp);
     doit(connfd);
     Close(connfd);
 }
@@ -129,11 +122,12 @@ void doit(int connfd) {
         return;
     }
 
-    char url_store[100];
-    strcpy(url_store, uri);
+    char url_store[100]; // 아직 doit 함수 ㅎㅎ
+    strcpy(url_store, uri); // doit으로 받아온 connfd가 들고있는 uri를 넣어준다
 
+    // the url is cached?
     int cache_index;
-
+    // in cache then return the cache content
     // cache_index정수 선언, url_store에 있는 인덱스를 뒤짐(chche_find:10개의 캐시블럭) 뒤져서 나온 인덱스가 -1이 아니면
     if ((cache_index = cache_find(url_store)) != -1) { // 아니면 -> 내가 url_store에 들어있는 캐쉬인덱스에 접근을 했다는 것
         readerPre(cache_index); // 캐시 뮤텍스를 풀어줌 (열어줌 0->1)
@@ -143,10 +137,13 @@ void doit(int connfd) {
         return;
     }
 
+    // parse the uri to get hostname, file path, port
     parse_uri(uri, hostname, path, &port);
 
+    // build the http header which will send to the end server
     build_http_header(endserver_http_header, hostname, path, port, &rio);
 
+    // connect to the end server
     end_serverfd = connect_endServer(hostname, port, endserver_http_header);
     if (end_serverfd < 0) {
         printf("connection failed\n");
@@ -155,8 +152,10 @@ void doit(int connfd) {
 
     Rio_readinitb(&server_rio, end_serverfd);
 
+    // write the http header to endserver
     Rio_writen(end_serverfd, endserver_http_header, strlen(endserver_http_header));
 
+    // recieve message from end server and send to the client
     char cachebuf[MAX_OBJECT_SIZE];
     int sizebuf = 0;
     size_t n; // 캐시에 없을 때 찾아주는 과정?
@@ -174,6 +173,43 @@ void doit(int connfd) {
     if (sizebuf < MAX_OBJECT_SIZE) {
         cache_uri(url_store, cachebuf); // url_store에 cachebuf 저장
     }
+}
+
+
+// void build_http_header(char *http_header, char *method, char *path, char *user_agent_hdr) {
+//     // 기본적인 GET 요청 라인
+//     sprintf(http_header, "%s %s HTTP/1.0\r\n", method, path);
+//     // 연결을 계속 유지하지 않고 종료함을 명시 (HTTP/1.0 기준으로 Keep-Alive는 기본적으로 활성화되지 않음)
+//     sprintf(http_header + strlen(http_header), "Connection: close\r\n");
+//     // 프록시 연결을 종료함을 명시
+//     sprintf(http_header + strlen(http_header), "Proxy-Connection: close\r\n");
+//     // User-Agent 헤더 추가
+//     sprintf(http_header + strlen(http_header), "%s", user_agent_hdr);
+// }
+
+void parse_uri(char *uri, char *hostname, char *port, char *path) {
+    char *hostname_ptr = strstr(uri, "//") ? strstr(uri, "//") + 2 : uri + 1;
+    char *port_ptr = strstr(hostname_ptr, ":");
+    char *path_ptr = strstr(hostname_ptr, "/");
+
+    // 경로 처리
+    if (path_ptr) {
+        *path_ptr = '\0'; // 경로 시작 부분을 NULL로 변경하여 호스트 이름과 포트 번호를 분리
+        strcpy(path, path_ptr + 1); // 경로 복사
+    } else {
+        strcpy(path, ""); // 경로가 없는 경우 빈 문자열로 설정
+    }
+
+    // 포트 번호 처리
+    if (port_ptr && port_ptr < path_ptr) { // 포트 번호가 있고, 경로 시작 전에 위치하는 경우
+        *port_ptr = '\0'; // 포트 시작 부분을 NULL로 변경하여 호스트 이름을 분리
+        strcpy(port, port_ptr + 1); // 포트 번호 복사
+    } else {
+        strcpy(port, "80"); // 포트 번호가 명시되지 않은 경우 기본값으로 "80" 설정
+    }
+
+    // 호스트 이름 처리
+    strcpy(hostname, hostname_ptr); // 호스트 이름 복사
 }
 
 void build_http_header(char *http_header, char *hostname, char *path, int port, rio_t *client_rio) {
@@ -219,35 +255,9 @@ inline int connect_endServer(char *hostname, int port, char *http_header) {
     return Open_clientfd(hostname, portStr);
 }
 
-// parse the uri to get hostname, file path, port
-void parse_uri(char *uri, char *hostname, char *path, int *port) {
-    *port = 80;
-    char *pos = strstr(uri, "//");
-
-    pos = pos != NULL ? pos + 2 : uri;
-
-    char *pos2 = strstr(pos, ":");
-    // sscanf(pos, "%s", hostname);
-    if (pos2 != NULL) {
-        *pos2 = '\0';
-        sscanf(pos, "%s", hostname);
-        sscanf(pos2 + 1, "%d%s", port, path);
-    } else {
-        pos2 = strstr(pos, "/");
-        if (pos2 != NULL) {
-            *pos2 = '\0';  // 중간에 끊으려고
-            sscanf(pos, "%s", hostname);
-            *pos2 = '/';
-            sscanf(pos2, "%s", path);
-        } else {
-            scanf(pos, "%s", hostname);
-        }
-    }
-    return;
-}
-// Cahce
-
+// ============================ Caching Proxy ============================
 void cache_init() {
+    cache.cache_num = 0; // 맨 처음이니까
     int i;
     for (i = 0; i < CACHE_OBJS_COUNT; i++) {
         cache.cacheobjs[i].LRU = 0; // LRU : 우선 순위를 미는 것. 처음이니까 0
@@ -258,12 +268,11 @@ void cache_init() {
         //    뮤텍스 만들 포인터 / 0 : 세마포어를 뮤텍스로 쓰려면 0을 써야 쓰레드끼리 사용하는거라고 표시하는 것이 됨 / 1 : 초깃값
         // 세마포어는 프로세스를 쓰는 것. 지금 세마포어를 쓰레드에 적용하고 싶으니까 0을 써서 쓰레드에서 쓰는거라고 표시, 나머지 숫자를 프로세스에서 쓰는거라는 표시.
         Sem_init(&cache.cacheobjs[i].wmutex, 0, 1); // wmutex : 캐시에 접근하는 것을 프로텍트해주는 뮤텍스
-        Sem_init(&cache.cacheobjs[i].rdcntmutex, 0, 1); // read count mutex : 리드카운트에 접근하는걸 프로텍트해주는 뮤텍스
+        Sem_init(&cache.cacheobjs[i].rdcntmutex, 0, 1); // read count mutex : 리드카운트가 1이면 공유자원 사용중
         // ㄴ flag 지정
         cache.cacheobjs[i].readCnt = 0; // read count를 0으로 놓고 init을 끝냄
     }
 }
-
 
 void readerPre(int i) { // i = 해당인덱스
     // 내가 받아온 index오브젝트의 리드카운트 뮤텍스를 P함수(recntmutex에 접근을 가능하게) 해준다
@@ -278,16 +287,16 @@ void readerPre(int i) { // i = 해당인덱스
 }
 
 void readerAfter(int i) {
-    P(&cache.cacheobjs[i].rdcntmutex);
-    cache.cacheobjs[i].readCnt--;
+    P(&cache.cacheobjs[i].rdcntmutex); //뮤텍스 읽기 잠궈짐
+    cache.cacheobjs[i].readCnt--; // 감소 0 이면 작업할 수 있음
     if (cache.cacheobjs[i].readCnt == 0)
-        V(&cache.cacheobjs[i].wmutex);
+        V(&cache.cacheobjs[i].wmutex); // 대기중인 다음쓰레드가 대기 상태에서 벗어나 쓸 수 있음
     V(&cache.cacheobjs[i].rdcntmutex);
 }
 
-// Cache Command
+// ============= Cache Command ==================
+// P는 세마포어의 대기(wait) 연산을, V는 세마포어의 신호(signal)
 
-//URL이 캐시에 존재하는지를 확인하고, 존재한다면 해당 캐시 객체의 인덱스를 반환
 int cache_find(char *url) {
     int i;
     for (i = 0; i < CACHE_OBJS_COUNT; i++) {
@@ -301,7 +310,7 @@ int cache_find(char *url) {
     return -1;
 }
 
-int cache_eviction() { // 가장 적게 사용된 캐시 항목(LRU가 가장 낮은 항목)을 대체할 위치를 반환
+int cache_eviction() { // 캐시 쫒아내기
     int min = LRU_MAGIC_NUMBER;
     int minindex = 0;
     int i;
@@ -323,6 +332,7 @@ int cache_eviction() { // 가장 적게 사용된 캐시 항목(LRU가 가장 �
     return minindex;
 }
 
+
 void writePre(int i) {
     P(&cache.cacheobjs[i].wmutex);
 }
@@ -343,7 +353,6 @@ void cache_LRU(int index) {
     }
 }
 
-// cache the uri and content in cache
 void cache_uri(char *uri, char *buf) {
     int i = cache_eviction(); // 빈 캐시 블럭을 찾는 첫번째 index
 
@@ -357,3 +366,4 @@ void cache_uri(char *uri, char *buf) {
 
     writeAfter(i);
 }
+
