@@ -78,15 +78,9 @@ int main(int argc, char **argv) {
     if (argc != 2) {
         // fprintf: 출력을 파일에다 씀. strerr: 파일 포인터
         fprintf(stderr, "usage: %s <port> \n", argv[0]);
-        exit(1);  // exit(1): 에러 시 강제 종료
+        exit(0);  // exit(1): 에러 시 강제 종료
     }
     Signal(SIGPIPE, SIG_IGN); // 특정 클라가 종료되어있다고 해서 남은 클라에 영향가지않게 그 한쪽 종료됐다는 시그널을 무시해라.
-    /* 클라이언트를 여러개 받고 서버랑 연결하는데, 만약 정상적인 커넥션과 클로즈를 한다면 소켓을 받으면서 다 닫는 것 까지가 프로세스 과정인데,
-      그건 정상적인 과정이니 문제가 안생김. but 클라이언트에서 정상적이지 않은 종료를 해서 소켓이 자기 혼자 닫히거나 사라졌을 때
-      서버에서 그 소켓에 접근하려고 할 때 그 소켓에 대해 writen하려고 할 때 response를 보낼 수 있음.
-      그러면 시그널에서 잘못됐다는 시그널을 보내는데 그 보내는 시그널은 받으면 원래는 프로세스가 전체 종료가 됨.
-      하지만 이 프로세스는 현재 다른 여러 클라이언트들과도 연결되어있는 상태기 때문에 하나 종료됐다고 해서 다 꺼버리면 안되니까
-      그런 시그널을 무시해라, 라는 함수. SIG_IGN : signal ignore */
 
     listenfd = Open_listenfd(argv[1]);
     while (1) {
@@ -219,29 +213,42 @@ inline int connect_endServer(char *hostname, int port, char *http_header) {
 
 // parse the uri to get hostname, file path, port
 void parse_uri(char *uri, char *hostname, char *path, int *port) {
-    *port = 80;
+    *port = 80; // 기본 포트
     char *pos = strstr(uri, "//");
 
-    pos = pos != NULL ? pos + 2 : uri;
+    // "http://" 이후의 부분을 찾는다.
+    pos = pos ? pos + 2 : uri;
 
+    // 첫 번째 ":"를 찾는다.
     char *pos2 = strstr(pos, ":");
-    // sscanf(pos, "%s", hostname);
     if (pos2 != NULL) {
-        *pos2 = '\0';
-        sscanf(pos, "%s", hostname);
-        sscanf(pos2 + 1, "%d%s", port, path);
-    } else {
-        pos2 = strstr(pos, "/");
-        if (pos2 != NULL) {
-            *pos2 = '\0';  // 중간에 끊으려고
-            sscanf(pos, "%s", hostname);
-            *pos2 = '/';
-            sscanf(pos2, "%s", path);
+        int firstPort;
+        sscanf(pos2 + 1, "%d", &firstPort);
+        // 첫 번째 포트가 8080이면, 두 번째 URI로 넘어간다.
+        if (firstPort == 8080) {
+            char *pos3 = strstr(pos2, "/");
+            if (pos3 != NULL) {
+                pos3++; // 두 번째 URI 시작 부분
+                pos2 = strstr(pos3, ":");
+                if (pos2 != NULL) {
+                    *pos2 = '\0';
+                    sscanf(pos3, "%s", hostname);
+                    sscanf(pos2 + 1, "%d%s", port, path);
+                } else {
+                    // 두 번째 ":"가 없는 경우
+                    sscanf(pos3, "%s", hostname);
+                }
+            }
         } else {
-            scanf(pos, "%s", hostname);
+            // 첫 번째 포트가 8080이 아닌 경우
+            *pos2 = '\0';
+            sscanf(pos, "%s", hostname);
+            sscanf(pos2 + 1, "%d%s", port, path);
         }
+    } else {
+        // URI에 ":"가 없는 경우
+        sscanf(pos, "%s", hostname);
     }
-    return;
 }
 
 void cache_init() {
