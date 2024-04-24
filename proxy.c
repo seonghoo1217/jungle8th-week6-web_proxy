@@ -181,29 +181,52 @@ void doit(int connfd) {
     }
 }
 
-void parse_uri(char *uri, char *hostname, char *port, char *path) {
-    char *hostname_ptr = strstr(uri, "//") ? strstr(uri, "//") + 2 : uri + 1;
-    char *port_ptr = strstr(hostname_ptr, ":");
-    char *path_ptr = strstr(hostname_ptr, "/");
+int parse_uri(char *uri, char *hostname, char *port, char *pathname) {
+    char *pos;
+    char *start;
 
-    // 경로 처리
-    if (path_ptr) {
-        *path_ptr = '\0'; // 경로 시작 부분을 NULL로 변경하여 호스트 이름과 포트 번호를 분리
-        strcpy(path, path_ptr + 1); // 경로 복사
+    if (uri == NULL) return 0;
+
+    // http skip protocol (http:// or https://)
+    start = strstr(uri, "://");
+    if (start != NULL) {
+        start += 3;
     } else {
-        strcpy(path, ""); // 경로가 없는 경우 빈 문자열로 설정
+        start = uri;
     }
 
-    // 포트 번호 처리
-    if (port_ptr && port_ptr < path_ptr) { // 포트 번호가 있고, 경로 시작 전에 위치하는 경우
-        *port_ptr = '\0'; // 포트 시작 부분을 NULL로 변경하여 호스트 이름을 분리
-        strcpy(port, port_ptr + 1); // 포트 번호 복사
+    // 포트 path찾기
+    pos = strchr(start, ':');
+    if (pos != NULL) {
+        *pos = '\0';
+        sscanf(start, "%s", hostname);
+        sscanf(pos + 1, "%[^/]", port);
+
+        start = pos + strlen(port) + 1;
     } else {
-        strcpy(port, "80"); // 포트 번호가 명시되지 않은 경우 기본값으로 "80" 설정
+        pos = strchr(start, '/');
+        if (pos != NULL) {
+            *pos = '\0';
+            sscanf(start, "%s", hostname);
+            *pos = '/';
+            strcpy(port, "8080"); // default port 포트 명시 없으면 8080
+        } else {
+            sscanf(start, "%s", hostname);
+            strcpy(port, "8080");
+            strcpy(pathname, "/");
+            return 1;
+        }
+        start = pos;
     }
 
-    // 호스트 이름 처리
-    strcpy(hostname, hostname_ptr); // 호스트 이름 복사
+    // 경로 추출
+    if (*start == '/') {
+        sscanf(start, "%s", pathname);
+    } else {
+        return -1;
+    }
+
+    return 1;
 }
 
 void build_http_header(char *http_header, char *hostname, char *path, int port, rio_t *client_rio) {
